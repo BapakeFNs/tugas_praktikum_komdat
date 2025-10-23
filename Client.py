@@ -1,0 +1,158 @@
+import tkinter as tk
+from tkinter import *
+from tkinter import messagebox, scrolledtext, PhotoImage
+from datetime import datetime
+import socket
+import threading
+
+class TCPClientGUI:
+    def __init__(self, window):
+        self.window = window
+        self.window.configure(bg ="#3e3653")
+        self.window.title("Client TCP")
+        self.window.geometry("300x200")
+        self.window.iconbitmap("kaorukorin.ico")
+        self.window.resizable(False,False)
+
+        self.client_socket = None
+        self.is_connected = False
+        
+        # --- Frame Konfigurasi ---
+        self.config_frame = tk.Frame(self.window, padx=10, pady=10)
+        self.config_frame.pack(pady=10)
+        self.config_frame.configure(bg="#3e3653")
+
+        
+        tk.Label(self.config_frame, text="IP Address:", fg="white", bg="#3e3653",font=("sans-serif", 9 , "bold")).grid(row=0, column=0, sticky="w")
+        self.ip_entry = tk.Entry(self.config_frame)
+        self.ip_entry.insert(0, "127.0.0.1")  # Default IP
+        self.ip_entry.grid(row=1, column=0, padx=10, pady=10)
+        
+        tk.Label(self.config_frame, text="Port:", fg="white", bg="#3e3653",font=("sans-serif", 9 , "bold")).grid(row=2, column=0, sticky="w")
+        self.port_entry = tk.Entry(self.config_frame)
+        self.port_entry.insert(0, "65432")  # Default Port
+        self.port_entry.grid(row=3, column=0, padx=10, pady=10)
+        
+        self.connect_button = tk.Button(self.config_frame, text="Sambungkan", fg="white", command=self.connect_to_server)
+        self.connect_button.config(font=("sans-serif", 9 , "bold"))
+        self.connect_button.grid(row=6, column=0, padx=10, pady=10)
+        self.connect_button.configure(bg="#794e6b")
+        
+        
+
+        # --- Frame Komunikasi ---
+        self.chat_frame = tk.Frame(self.window, padx=10, pady=10)
+        self.chat_frame.configure(bg="#3e3653")
+        
+        self.chat_history = scrolledtext.ScrolledText(self.chat_frame, wrap=tk.WORD, state='disabled')
+        self.chat_history.pack(padx=5, pady=5, fill=tk.BOTH, expand=True)
+        self.chat_history.config(font=("sans-serif", 9 , "bold"))
+        self.chat_history.configure(bg="#794e6b",fg="white")
+        
+        self.msg_entry = tk.Entry(self.chat_frame)
+        self.msg_entry.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.X, expand=True)
+        self.msg_entry.bind("<Return>", self.send_message_event)  # Kirim pesan dengan tombol Enter
+        
+        self.send_button = tk.Button(self.chat_frame, text="Kirim", command=self.send_message)
+        self.send_button.pack(side=tk.RIGHT, padx=5, pady=5)
+
+    def connect_to_server(self):
+        self.root = root
+        self.root.configure(bg="blue")
+        self.root.geometry("500x500")
+        self.root.resizable(False,False)
+        if self.is_connected:
+            messagebox.showwarning("Peringatan", "Sudah terhubung ke server.")
+            return
+        
+        try:
+            ip = self.ip_entry.get()
+            port = int(self.port_entry.get())
+            
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.connect((ip, port))
+            self.is_connected = True
+            
+            self.update_gui_state()
+            self.log_message(f"Berhasil terhubung ke {ip}:{port}\n")
+            
+            # Memulai thread untuk menerima pesan
+            receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
+            receive_thread.start()
+
+        except Exception as e:
+            messagebox.showerror("Error Koneksi", f"Tidak dapat terhubung ke server ")
+
+    def disconnect_from_server(self):
+        if not self.is_connected:
+            return
+            
+        self.is_connected = False
+        self.client_socket.close()
+        self.update_gui_state()
+        self.log_message("Koneksi diputus.\n")
+    
+    def update_gui_state(self):
+        """Mengubah status widget berdasarkan koneksi."""
+        if self.is_connected:
+            self.config_frame.pack_forget()  # Sembunyikan frame konfigurasi
+            self.chat_frame.pack(fill=tk.BOTH, expand=True) # Tampilkan frame chat
+            self.connect_button.config(state=tk.DISABLED)
+            
+            self.msg_entry.focus()
+        else:
+            self.config_frame.pack(pady=10) # Tampilkan frame konfigurasi
+            self.chat_frame.pack_forget() # Sembunyikan frame chat
+            self.connect_button.config(state=tk.NORMAL)
+            
+
+    def receive_messages(self):
+        while self.is_connected:
+            try:
+                message = self.client_socket.recv(1024).decode('utf-8')
+                if message:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    self.log_message(f"[{timestamp}] {message}\n")
+                else:
+                    # Server menutup koneksi
+                    self.disconnect_from_server()
+                    break
+            except (socket.error, OSError):
+                # Server menutup koneksi atau terjadi error
+                if self.is_connected: # Hanya tampilkan jika belum terputus
+                    self.log_message("Koneksi ke server terputus.\n")
+                    self.disconnect_from_server()
+                break
+
+    def send_message_event(self, event):
+        self.send_message()
+
+    def send_message(self):
+        if not self.is_connected:
+            messagebox.showwarning("Peringatan", "Tidak terhubung ke server.")
+            return
+
+        message = self.msg_entry.get()
+        if message:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                self.client_socket.sendall(message.encode('utf-8'))
+                self.log_message(f"[{timestamp}]Saya: {message}\n")
+                self.msg_entry.delete(0, tk.END)
+            except Exception as e:
+                self.log_message(f"Gagal mengirim pesan: {e}\n")
+                self.disconnect_from_server()
+
+    def log_message(self, message):
+        """Menambahkan pesan ke riwayat chat."""
+        self.chat_history.config(state='normal')
+        self.chat_history.insert(tk.END, message)
+        self.chat_history.see(tk.END)
+        self.chat_history.config(state='disabled')
+
+# Menjalankan aplikasi
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = TCPClientGUI(root)
+    app.update_gui_state() # Memastikan frame yang benar ditampilkan di awal
+    root.mainloop()
